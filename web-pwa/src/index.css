@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#07080d] text-slate-100 font-sans antialiased overflow-x-hidden;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* Glassmorphism Panel styles */
+.glass-panel {
+  background: rgba(13, 15, 24, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Custom continuous hazard strobe animations */
+@keyframes strobe-red {
+  0%, 100% {
+    background-color: #7f1d1d;
+    box-shadow: inset 0 0 80px rgba(0,0,0,0.8), 0 0 40px rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    background-color: #ef4444;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.4), 0 0 80px rgba(239, 68, 68, 0.8);
+  }
+}
+
+@keyframes strobe-yellow {
+  0%, 100% {
+    background-color: #713f12;
+    box-shadow: inset 0 0 80px rgba(0,0,0,0.8), 0 0 40px rgba(234, 179, 8, 0.4);
+  }
+  50% {
+    background-color: #eab308;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.4), 0 0 80px rgba(234, 179, 8, 0.8);
+  }
+}
+
+@keyframes pulse-cyan {
+  0%, 100% {
+    border-color: rgba(6, 182, 212, 0.2);
+    box-shadow: 0 0 20px rgba(6, 182, 212, 0.1);
+  }
+  50% {
+    border-color: rgba(6, 182, 212, 0.8);
+    box-shadow: 0 0 40px rgba(6, 182, 212, 0.4);
+  }
+}
+
+.animate-strobe-red {
+  animation: strobe-red 0.8s infinite alternate ease-in-out;
+}
+
+.animate-strobe-yellow {
+  animation: strobe-yellow 1.2s infinite alternate ease-in-out;
+}
+
+.animate-pulse-cyan {
+  animation: pulse-cyan 2s infinite ease-in-out;
+}
+
+/* Linear Hold Confirm Loader */
+.confirm-loader {
+  transition: width 2s linear;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #090a0f;
+}
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}

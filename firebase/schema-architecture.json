@@ -1,0 +1,96 @@
+{
+  "districts_collection": {
+    "path": "/districts/{districtId}",
+    "description": "Central SaaS grouping entity containing multiple schools (e.g., 'Springfield Unified District'). Managed exclusively by Super Admins.",
+    "fields": {
+      "id": "STRING (e.g., 'springfield_unified_902')",
+      "name": "STRING (e.g., 'Springfield Unified School District')",
+      "state": "STRING (e.g., 'IL')",
+      "createdAt": "TIMESTAMP",
+      "schools": "ARRAY of STRING (IDs of schools linked to this district)",
+      "admins": "ARRAY of STRING (UIDs of users authorized as district-level administrators)"
+    }
+  },
+  "licenses_collection": {
+    "path": "/licenses/{licenseId}",
+    "description": "SaaS service contracts regulating school allotments, active plan tiers, device limits, and expiration windows. Managed by Super Admins.",
+    "fields": {
+      "id": "STRING (e.g., 'LIC-8890A')",
+      "districtId": "STRING (Foreign key mapping directly to /districts/{districtId})",
+      "status": "STRING (Allowed options: 'ACTIVE', 'EXPIRED', 'SUSPENDED')",
+      "planType": "STRING (Allowed options: 'FREE', 'PREMIUM_ENTERPRISE')",
+      "maxSchools": "NUMBER (Quota, e.g., 10)",
+      "maxDevicesPerSchool": "NUMBER (Device ceiling, e.g., 500)",
+      "createdAt": "TIMESTAMP",
+      "expiresAt": "TIMESTAMP (Time when license invalidates, e.g., '2027-06-30T00:00:00Z')"
+    }
+  },
+  "schools_collection": {
+    "path": "/schools/{schoolId}",
+    "description": "Multi-tenant record containing global metadata and setting parameters for a specific school. Inherits from districts and licenses.",
+    "fields": {
+      "id": "STRING (e.g., 'highland_prep_102')",
+      "districtId": "STRING (Foreign key mapping directly to /districts/{districtId})",
+      "licenseId": "STRING (Foreign key mapping directly to /licenses/{licenseId})",
+      "name": "STRING (e.g., 'Highland Prep Academy')",
+      "createdAt": "TIMESTAMP",
+      "admins": "ARRAY of STRING (UIDs of school-level administrators)",
+      "settings": {
+        "timezone": "STRING (e.g., 'America/New_York')",
+        "silentHoursStart": "STRING (HH:MM format, e.g., '18:00')",
+        "silentHoursEnd": "STRING (HH:MM format, e.g., '07:00')",
+        "allowStudentSelfEnrollment": "BOOLEAN"
+      }
+    }
+  },
+  "members_collection": {
+    "path": "/schools/{schoolId}/members/{memberId}",
+    "description": "Human profiles enrolled in the school. A single member document can bind multiple active physical devices.",
+    "fields": {
+      "id": "STRING (Unique identifier, typically Firebase Auth UID)",
+      "name": "STRING (e.g., 'Dr. Charles Vance')",
+      "email": "STRING (e.g., 'c.vance@highlandprep.edu')",
+      "role": "STRING (Allowed options: 'ADMIN', 'TEACHER', 'STUDENT')",
+      "status": "STRING (Allowed options: 'ACTIVE', 'SUSPENDED', 'PENDING')",
+      "enrolledAt": "TIMESTAMP",
+      "expiresAt": "TIMESTAMP (Required for students only. Matches graduation date to trigger background zero-cost Firestore TTL deletion. Set to NULL/never for Teachers.)"
+    }
+  },
+  "invitations_collection": {
+    "path": "/schools/{schoolId}/invitations/{inviteCode}",
+    "description": "Admin-generated temporary 6-digit invitation codes allowing users to securely self-enroll their accounts.",
+    "fields": {
+      "code": "STRING (6-digit alphanumeric token, e.g., 'XF89A1')",
+      "role": "STRING (Allowed options: 'TEACHER', 'STUDENT')",
+      "createdAt": "TIMESTAMP",
+      "expiresAt": "TIMESTAMP (Time when code invalidates, e.g., 24 hours from creation)",
+      "maxUses": "NUMBER (Maximum total times the code can be consumed)",
+      "usedCount": "NUMBER (Active count of users who enrolled with this token)",
+      "createdBy": "STRING (UID of the admin who generated the code)"
+    }
+  },
+  "devices_collection": {
+    "path": "/schools/{schoolId}/devices/{deviceId}",
+    "description": "Active hardware nodes (watches, mobile companion PWAs, classroom TVs) connected to the system. Binds back to a human Member ID.",
+    "fields": {
+      "id": "STRING (Hardware UUID or generated token)",
+      "memberId": "STRING (Foreign key mapping directly to /schools/{schoolId}/members/{memberId})",
+      "deviceName": "STRING (e.g., 'Science Lab B Apple Watch')",
+      "deviceType": "STRING (Allowed options: 'WATCHOS', 'WEAROS', 'MOBILE_PWA', 'DISPLAY_NODE')",
+      "fcmPushToken": "STRING (Firebase Cloud Messaging registration ID for cloud notification routing)",
+      "registeredAt": "TIMESTAMP",
+      "batteryLevel": "NUMBER (Percentage status, e.g., 82)",
+      "lastActiveAt": "TIMESTAMP"
+    }
+  },
+  "system_status_collection": {
+    "path": "/schools/{schoolId}/system_status/current_alert",
+    "description": "Real-time state of the school's emergency broadcast alert system. Watched continuously by all active client devices.",
+    "fields": {
+      "status": "STRING (Allowed options: 'NORMAL', 'FIRE_ALARM', 'LOCKDOWN', 'SOFT_LOCKDOWN')",
+      "message": "STRING (Detailed broadcast instruction, e.g., 'Secure classroom. Do not issue hallway passes.')",
+      "triggeredBy": "STRING (Name or UID of triggerer)",
+      "timestamp": "TIMESTAMP"
+    }
+  }
+}

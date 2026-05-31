@@ -1,0 +1,25 @@
+{
+  "short_name": "ZipAlert",
+  "name": "ZipAlert Emergency broadcast Network",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#090A0F",
+  "theme_color": "#0D0E15",
+  "display": "standalone",
+  "orientation": "any",
+  "categories": ["safety", "utilities"],
+  "description": "High-reliability school emergency alert and haptic routing network."
+}

@@ -1,0 +1,81 @@
+{
+  "critical_threat_payload": {
+    "message": {
+      "topic": "<schoolId>_alerts_emergency",
+      "android": {
+        "priority": "high",
+        "ttl": "0s",
+        "notification": {
+          "title": "EMERGENCY BROADCAST",
+          "body": "CRITICAL THREAT: LOCKDOWN IN PROGRESS. SEEK SECURE AREA NOW.",
+          "channel_id": "zip_alert_emergency_channel",
+          "sound": "heavy_alarm_strobe.wav",
+          "color": "#FF0000",
+          "sticky": true,
+          "visibility": "public"
+        }
+      },
+      "apns": {
+        "headers": {
+          "apns-priority": "10",
+          "apns-push-type": "alert",
+          "apns-expiration": "0"
+        },
+        "payload": {
+          "aps": {
+            "alert": {
+              "title": "EMERGENCY BROADCAST",
+              "body": "CRITICAL THREAT: LOCKDOWN IN PROGRESS. SEEK SECURE AREA NOW."
+            },
+            "sound": {
+              "critical": 1,
+              "name": "heavy_alarm_strobe.caf",
+              "volume": 1.0
+            },
+            "interruption-level": "critical",
+            "category": "ZIP_ALERT_EMERGENCY"
+          }
+        }
+      },
+      "data": {
+        "status": "LOCKDOWN",
+        "timestamp": "2026-05-31T15:00:00Z",
+        "schoolId": "<schoolId>"
+      }
+    }
+  },
+  "teacher_operations_payload": {
+    "message": {
+      "topic": "<schoolId>_alerts_teachers",
+      "android": {
+        "priority": "high",
+        "notification": {
+          "title": "Corridor Alert (Muted)",
+          "body": "SOFT LOCKDOWN: Secure classroom. Do not issue hallway passes until further notice.",
+          "channel_id": "zip_alert_teacher_ops_channel",
+          "sound": "discrete_chime.mp3"
+        }
+      },
+      "apns": {
+        "headers": {
+          "apns-priority": "10"
+        },
+        "payload": {
+          "aps": {
+            "alert": {
+              "title": "Corridor Alert (Muted)",
+              "body": "SOFT LOCKDOWN: Secure classroom. Do not issue hallway passes until further notice."
+            },
+            "sound": "discrete_chime.caf",
+            "interruption-level": "active"
+          }
+        }
+      },
+      "data": {
+        "status": "SOFT_LOCKDOWN",
+        "timestamp": "2026-05-31T15:00:00Z",
+        "schoolId": "<schoolId>"
+      }
+    }
+  }
+}

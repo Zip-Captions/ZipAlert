@@ -1,0 +1,96 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Helpers
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Checks if the user is an authenticated Super Admin of the entire SaaS system
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "SUPER_ADMIN"
+      );
+    }
+
+    // Resolves a member's role within their specific school scope
+    function getMemberRole(schoolId, memberId) {
+      return get(/databases/$(database)/documents/schools/$(schoolId)/members/$(memberId)).data.role;
+    }
+
+    // Asserts if a member has administrative privileges for the school
+    function isAdmin(schoolId, memberId) {
+      return isAuthenticated() && (
+        getMemberRole(schoolId, memberId) == "ADMIN" ||
+        memberId in get(/databases/$(database)/documents/schools/$(schoolId)).data.admins ||
+        isSuperAdmin()
+      );
+    }
+
+    // --- SaaS SUPER ADMIN SCOPES ---
+
+    // Global School Districts
+    // - Authenticated users can view districts
+    // - Only SaaS Super Administrators can create or modify districts
+    match /districts/{districtId} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
+    }
+
+    // Global Licensing Contracts
+    // - Authenticated users can view licensing terms (enables schools to validate active status)
+    // - Only SaaS Super Administrators can allocate or modify licenses
+    match /licenses/{licenseId} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
+    }
+
+    // Global User Roles (Holds global SUPER_ADMIN flags)
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
+      allow write: if isSuperAdmin();
+    }
+
+    // --- MULTI-TENANT SCHOOL SCOPES ---
+    match /schools/{schoolId} {
+      
+      // Permit read access to general school details
+      // Permit write access only to school administrators or Super Admins
+      allow read: if true;
+      allow write: if isAuthenticated() && isAdmin(schoolId, request.auth.uid);
+
+      // School Members (Teachers, Students, Admins)
+      match /members/{memberId} {
+        allow read: if isAuthenticated() && (
+          request.auth.uid == memberId || 
+          isAdmin(schoolId, request.auth.uid)
+        );
+        allow write: if isAuthenticated() && isAdmin(schoolId, request.auth.uid);
+      }
+
+      // Enrollment Invitation Codes
+      match /invitations/{inviteCode} {
+        allow read: if true;
+        allow write: if isAuthenticated() && isAdmin(schoolId, request.auth.uid);
+      }
+
+      // Physical Devices (Smartwatches, Phones, Display Monitors)
+      match /devices/{deviceId} {
+        allow read: if true;
+        allow create: if true; // Allows initial watch/PWA token registration
+        allow update, delete: if isAuthenticated() && (
+          request.resource.data.memberId == request.auth.uid ||
+          resource.data.memberId == request.auth.uid ||
+          isAdmin(schoolId, request.auth.uid)
+        );
+      }
+
+      // Real-time Emergency Alert Status
+      match /system_status/current_alert {
+        allow read: if true;
+        allow write: if isAuthenticated() && isAdmin(schoolId, request.auth.uid);
+      }
+    }
+  }
+}

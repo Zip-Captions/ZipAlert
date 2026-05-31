@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.zipalert.wearos">
+
+    <!-- Hard emergency sensor access requirements -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    
+    <!-- Wear OS hardware requirement -->
+    <uses-feature android:name="android.hardware.type.watch" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@android:drawable/stat_sys_warning"
+        android:label="ZipAlert"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.DeviceDefault">
+        
+        <!-- Main Wear OS Jetpack Compose Activity -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="ZipAlert"
+            android:theme="@android:style/Theme.DeviceDefault">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Background Snapshot Listener & Haptic Looper Service -->
+        <service
+            android:name=".AlertService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property 
+                android:name="android.app.PROPERTY_SPECIAL_USE_FCM_URGENCY" 
+                android:value="Enables critical haptic and sensory alert looping for deaf and hard-of-hearing users during school lockouts." />
+        </service>
+
+    </application>
+
+</manifest>
