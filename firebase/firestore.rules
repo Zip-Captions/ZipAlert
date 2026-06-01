@@ -77,7 +77,10 @@ service cloud.firestore {
 
       // Physical Devices (Smartwatches, Phones, Display Monitors)
       match /devices/{deviceId} {
-        allow read: if true;
+        allow read: if isAuthenticated() && (
+          exists(/databases/$(database)/documents/schools/$(schoolId)/members/$(request.auth.uid)) ||
+          isSuperAdmin()
+        );
         allow create: if true; // Allows initial watch/PWA token registration
         allow update, delete: if isAuthenticated() && (
           request.resource.data.memberId == request.auth.uid ||
@@ -87,8 +90,12 @@ service cloud.firestore {
       }
 
       // Real-time Emergency Alert Status
+      // Enforces strict tenant isolation: only enrolled school roster members or Super Admins can listen
       match /system_status/current_alert {
-        allow read: if true;
+        allow read: if isAuthenticated() && (
+          exists(/databases/$(database)/documents/schools/$(schoolId)/members/$(request.auth.uid)) ||
+          isSuperAdmin()
+        );
         allow write: if isAuthenticated() && isAdmin(schoolId, request.auth.uid);
       }
     }
