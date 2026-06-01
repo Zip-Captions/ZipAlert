@@ -101,7 +101,7 @@ export default function App() {
   // Master SaaS preview role: SUPER_ADMIN, ADMIN, TEACHER, STUDENT
   const [activeRole, setActiveRole] = useState<"SUPER_ADMIN" | "ADMIN" | "TEACHER" | "STUDENT">(() => {
     const saved = localStorage.getItem("zip_alert_role");
-    return (saved as any) || "SUPER_ADMIN";
+    return (saved as any) || "STUDENT";
   });
   
   // Tab controller for Admin view: "CRISIS", "ROSTER", "SCHOOL_SETTINGS", "DEVICES"
@@ -179,6 +179,62 @@ export default function App() {
   const [customAlertMessage, setCustomAlertMessage] = useState("");
   const [customAlertLevel, setCustomAlertLevel] = useState<"LOCKDOWN" | "FIRE_ALARM" | "SOFT_LOCKDOWN">("LOCKDOWN");
   const [customAlertTarget, setCustomAlertTarget] = useState<"ALL_DEVICES" | "STAFF_ONLY">("ALL_DEVICES");
+
+  // Admin credentials auth states
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [adminEmail, setAdminEmail] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [adminLoginError, setAdminLoginError] = useState("");
+
+  const handleAdminLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminLoginError("");
+    setSuccessMessage("");
+    
+    if (!adminEmail || !adminPassword) {
+      setAdminLoginError("Please enter your email and password.");
+      return;
+    }
+
+    // In production, this bridges directly to Firebase Authentication:
+    // signInWithEmailAndPassword(auth, adminEmail, adminPassword)
+    
+    // SaaS Super Admin credentials verify:
+    if (adminEmail === "director@zipalert.co" && adminPassword === "supersecret123") {
+      localStorage.setItem("zip_alert_enrolled", "true");
+      localStorage.setItem("zip_alert_role", "SUPER_ADMIN");
+      localStorage.setItem("zip_alert_member_id", "USR-0001");
+      localStorage.setItem("zip_alert_member_name", "SaaS Platform Director");
+      localStorage.setItem("zip_alert_member_email", adminEmail);
+      
+      setActiveRole("SUPER_ADMIN");
+      setIsEnrolled(true);
+      setSuccessMessage("Authenticated successfully as SaaS Super Admin.");
+      setAdminEmail("");
+      setAdminPassword("");
+      if ("vibrate" in navigator) navigator.vibrate([100, 50, 100]);
+      return;
+    }
+    
+    // School Admin credentials verify:
+    if (adminEmail === "admin@highlandprep.edu" && adminPassword === "schooladmin123") {
+      localStorage.setItem("zip_alert_enrolled", "true");
+      localStorage.setItem("zip_alert_role", "ADMIN");
+      localStorage.setItem("zip_alert_member_id", "USR-9901");
+      localStorage.setItem("zip_alert_member_name", "Principal John Mercer");
+      localStorage.setItem("zip_alert_member_email", adminEmail);
+      
+      setActiveRole("ADMIN");
+      setIsEnrolled(true);
+      setSuccessMessage("Authenticated successfully as School Admin.");
+      setAdminEmail("");
+      setAdminPassword("");
+      if ("vibrate" in navigator) navigator.vibrate([100, 50, 100]);
+      return;
+    }
+
+    setAdminLoginError("Invalid administrator credentials. Access blocked.");
+  };
 
   const handleCustomBroadcastSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -714,7 +770,20 @@ export default function App() {
     alert("School settings committed to Firestore.");
   };
 
-
+  // Sign out / Disconnect device node cleanly
+  const handleSignOut = () => {
+    localStorage.removeItem("zip_alert_enrolled");
+    localStorage.removeItem("zip_alert_role");
+    localStorage.removeItem("zip_alert_member_id");
+    localStorage.removeItem("zip_alert_member_name");
+    localStorage.removeItem("zip_alert_member_email");
+    setIsEnrolled(false);
+    setActiveRole("STUDENT");
+    setSuccessMessage("");
+    setEnrollmentError("");
+    setAdminLoginError("");
+    if ("vibrate" in navigator) navigator.vibrate([100, 50]);
+  };
 
   const activeMember = getActiveMember();
   const currentLicense = getActiveLicense();
@@ -732,10 +801,35 @@ export default function App() {
             <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-1.5 animate-fadeIn">
               ZipAlert <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">V3.5 SaaS</span>
             </h1>
-            <p className="text-[11px] text-slate-400 font-mono">{school.name} ({school.id})</p>
+            {isEnrolled ? (
+              <p className="text-[11px] text-slate-400 font-mono">{school.name} ({school.id})</p>
+            ) : (
+              <p className="text-[11px] text-slate-400 font-mono">Secure Standby Gateway</p>
+            )}
           </div>
         </div>
 
+        {/* User Profile & Sign Out Controls */}
+        {isEnrolled && (
+          <div className="flex items-center gap-4 animate-fadeIn">
+            <div className="hidden sm:flex flex-col text-right">
+              <span className="text-xs font-bold text-white leading-none">
+                {activeRole === "SUPER_ADMIN" ? "Platform Director" : activeMember?.name || "Verified Node"}
+              </span>
+              <span className="text-[10px] text-cyan-400 font-mono uppercase tracking-wider mt-0.5">
+                {activeRole === "SUPER_ADMIN" ? "SaaS Super Admin" : activeRole}
+              </span>
+            </div>
+            
+            <button
+              onClick={handleSignOut}
+              className="px-3.5 py-2 bg-red-950/20 hover:bg-red-900/30 border border-red-500/25 text-red-400 hover:text-red-300 text-xs font-bold rounded-xl active:scale-[0.98] transition-all cursor-pointer flex items-center gap-1.5 uppercase tracking-wide"
+            >
+              <XCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>Disconnect Node</span>
+            </button>
+          </div>
+        )}
       </header>
 
       {/* Standby Telemetry Bar */}
@@ -867,78 +961,147 @@ export default function App() {
               <div className="glass-panel p-8 rounded-3xl space-y-6 border-white/10 shadow-2xl relative overflow-hidden group">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-cyan-500/10 transition-colors duration-500" />
                 
-                <div className="text-center space-y-2">
-                  <div className="w-12 h-12 bg-cyan-500/10 rounded-xl mx-auto flex items-center justify-center border border-cyan-500/20 shadow-inner">
-                    <UserPlus className="w-6 h-6 text-cyan-400" />
-                  </div>
-                  <h3 className="text-2xl font-black text-white tracking-wide uppercase">Register Device</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
-                    Enter your school-issued 6-digit link token below to establish secure standby connection credentials.
-                  </p>
-                </div>
-
-                <form onSubmit={handleSelfEnrollment} className="space-y-4 font-sans text-left">
-                  {enrollmentError && (
-                    <div className="p-3.5 bg-red-950/30 border border-red-500/25 text-red-400 text-xs rounded-xl flex items-center gap-2.5 animate-pulse">
-                      <XCircle className="w-4.5 h-4.5 text-red-400 shrink-0" />
-                      <span className="font-semibold">{enrollmentError}</span>
+                {!showAdminLogin ? (
+                  <>
+                    <div className="text-center space-y-2">
+                      <div className="w-12 h-12 bg-cyan-500/10 rounded-xl mx-auto flex items-center justify-center border border-cyan-500/20 shadow-inner">
+                        <UserPlus className="w-6 h-6 text-cyan-400" />
+                      </div>
+                      <h3 className="text-2xl font-black text-white tracking-wide uppercase">Register Device</h3>
+                      <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
+                        Enter your school-issued 6-digit link token below to establish secure standby connection credentials.
+                      </p>
                     </div>
-                  )}
 
-                  {successMessage && (
-                    <div className="p-3.5 bg-emerald-950/30 border border-emerald-500/25 text-emerald-400 text-xs rounded-xl flex items-center gap-2.5">
-                      <CheckCircle className="w-4.5 h-4.5 text-emerald-400 shrink-0" />
-                      <span className="font-semibold">{successMessage}</span>
+                    <form onSubmit={handleSelfEnrollment} className="space-y-4 font-sans text-left">
+                      {enrollmentError && (
+                        <div className="p-3.5 bg-red-950/30 border border-red-500/25 text-red-400 text-xs rounded-xl flex items-center gap-2.5 animate-pulse">
+                          <XCircle className="w-4.5 h-4.5 text-red-400 shrink-0" />
+                          <span className="font-semibold">{enrollmentError}</span>
+                        </div>
+                      )}
+
+                      {successMessage && (
+                        <div className="p-3.5 bg-emerald-950/30 border border-emerald-500/25 text-emerald-400 text-xs rounded-xl flex items-center gap-2.5">
+                          <CheckCircle className="w-4.5 h-4.5 text-emerald-400 shrink-0" />
+                          <span className="font-semibold">{successMessage}</span>
+                        </div>
+                      )}
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">6-Digit Invitation Code</label>
+                        <div className="relative">
+                          <Key className="absolute left-4 top-3.5 w-4 h-4 text-slate-500" />
+                          <input 
+                            type="text" 
+                            maxLength={6}
+                            placeholder="e.g. XF89A1"
+                            value={enrollmentCode}
+                            onChange={(e) => setEnrollmentCode(e.target.value.toUpperCase())}
+                            className="w-full pl-11 pr-4 py-3 bg-[#090a10] border border-white/10 focus:border-cyan-500 rounded-xl text-white text-sm font-mono placeholder:text-slate-655 focus:outline-none transition-colors"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Your Full Name</label>
+                        <input 
+                          type="text" 
+                          placeholder="e.g. Miles Brody"
+                          value={enrollmentName}
+                          onChange={(e) => setEnrollmentName(e.target.value)}
+                          className="w-full px-4 py-3 bg-[#090a10] border border-white/10 focus:border-cyan-500 rounded-xl text-white text-sm placeholder:text-slate-655 focus:outline-none transition-colors"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">School Email Address</label>
+                        <input 
+                          type="email" 
+                          placeholder="e.g. m.brody@school.edu"
+                          value={enrollmentEmail}
+                          onChange={(e) => setEnrollmentEmail(e.target.value)}
+                          className="w-full px-4 py-3 bg-[#090a10] border border-white/10 focus:border-cyan-500 rounded-xl text-white text-sm placeholder:text-slate-655 focus:outline-none transition-colors"
+                        />
+                      </div>
+
+                      <button 
+                        type="submit"
+                        className="w-full py-4 mt-2 rounded-xl bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-sm font-bold text-white shadow-lg shadow-cyan-600/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 uppercase tracking-wide border-0 cursor-pointer"
+                      >
+                        <UserCheck className="w-4 h-4 text-white" /> Enroll Device
+                      </button>
+                    </form>
+
+                    <div className="border-t border-white/5 pt-4 text-center">
+                      <button 
+                        onClick={() => { setShowAdminLogin(true); setEnrollmentError(""); setSuccessMessage(""); }}
+                        className="text-xs text-cyan-400 hover:text-cyan-300 font-semibold bg-transparent border-0 cursor-pointer"
+                      >
+                        Are you an Administrator? Sign In
+                      </button>
                     </div>
-                  )}
-
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">6-Digit Invitation Code</label>
-                    <div className="relative">
-                      <Key className="absolute left-4 top-3.5 w-4 h-4 text-slate-500" />
-                      <input 
-                        type="text" 
-                        maxLength={6}
-                        placeholder="e.g. XF89A1"
-                        value={enrollmentCode}
-                        onChange={(e) => setEnrollmentCode(e.target.value.toUpperCase())}
-                        className="w-full pl-11 pr-4 py-3 bg-[#090a10] border border-white/10 focus:border-cyan-500 rounded-xl text-white text-sm font-mono placeholder:text-slate-650 focus:outline-none transition-colors"
-                      />
+                  </>
+                ) : (
+                  <>
+                    <div className="text-center space-y-2">
+                      <div className="w-12 h-12 bg-emerald-500/10 rounded-xl mx-auto flex items-center justify-center border border-emerald-500/20 shadow-inner">
+                        <Key className="w-6 h-6 text-emerald-400" />
+                      </div>
+                      <h3 className="text-2xl font-black text-white tracking-wide uppercase">Admin Sign In</h3>
+                      <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
+                        Authenticate with your District or School Administrator credentials to access systems control.
+                      </p>
                     </div>
-                  </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Your Full Name</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Miles Brody"
-                      value={enrollmentName}
-                      onChange={(e) => setEnrollmentName(e.target.value)}
-                      className="w-full px-4 py-3 bg-[#090a10] border border-white/10 focus:border-cyan-500 rounded-xl text-white text-sm placeholder:text-slate-650 focus:outline-none transition-colors"
-                    />
-                  </div>
+                    <form onSubmit={handleAdminLogin} className="space-y-4 font-sans text-left">
+                      {adminLoginError && (
+                        <div className="p-3.5 bg-red-950/30 border border-red-500/25 text-red-400 text-xs rounded-xl flex items-center gap-2.5 animate-pulse">
+                          <XCircle className="w-4.5 h-4.5 text-red-400 shrink-0" />
+                          <span className="font-semibold">{adminLoginError}</span>
+                        </div>
+                      )}
 
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">School Email Address</label>
-                    <input 
-                      type="email" 
-                      placeholder="e.g. m.brody@school.edu"
-                      value={enrollmentEmail}
-                      onChange={(e) => setEnrollmentEmail(e.target.value)}
-                      className="w-full px-4 py-3 bg-[#090a10] border border-white/10 focus:border-cyan-500 rounded-xl text-white text-sm placeholder:text-slate-650 focus:outline-none transition-colors"
-                    />
-                  </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Administrator Email</label>
+                        <input 
+                          type="email" 
+                          placeholder="director@zipalert.co"
+                          value={adminEmail}
+                          onChange={(e) => setAdminEmail(e.target.value)}
+                          className="w-full px-4 py-3 bg-[#090a10] border border-white/10 focus:border-cyan-500 rounded-xl text-white text-sm placeholder:text-slate-655 focus:outline-none transition-colors"
+                        />
+                      </div>
 
-                  <button 
-                    type="submit"
-                    className="w-full py-4 mt-2 rounded-xl bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-sm font-bold text-white shadow-lg shadow-cyan-600/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 uppercase tracking-wide"
-                  >
-                    <UserCheck className="w-4 h-4 text-white" /> Enroll Device
-                  </button>
-                </form>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Security Password</label>
+                        <input 
+                          type="password" 
+                          placeholder="••••••••"
+                          value={adminPassword}
+                          onChange={(e) => setAdminPassword(e.target.value)}
+                          className="w-full px-4 py-3 bg-[#090a10] border border-white/10 focus:border-cyan-500 rounded-xl text-white text-sm placeholder:text-slate-655 focus:outline-none transition-colors"
+                        />
+                      </div>
 
-                {/* Demo panel successfully removed for production */}
-              </div>
+                      <button 
+                        type="submit"
+                        className="w-full py-4 mt-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 uppercase tracking-wide border-0 cursor-pointer"
+                      >
+                        <UserCheck className="w-4 h-4 text-white" /> Authenticate Admin
+                      </button>
+                    </form>
+
+                    <div className="border-t border-white/5 pt-4 text-center">
+                      <button 
+                        onClick={() => { setShowAdminLogin(false); setAdminLoginError(""); setSuccessMessage(""); }}
+                        className="text-xs text-slate-400 hover:text-slate-305 font-semibold bg-transparent border-0 cursor-pointer"
+                      >
+                        Back to Device Registration
+                      </button>
+                    </div>
+                  </>
+                )}</div>
             </div>
           </div>
         ) : (
