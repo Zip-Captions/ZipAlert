@@ -784,7 +784,7 @@ export default function App() {
       <main className="flex-1 w-full max-w-7xl mx-auto p-6 md:p-8 flex flex-col">
 
         {/* ------------------ ENROLLMENT WIZARD ------------------ */}
-        {!isEnrolled && activeRole !== "ADMIN" && activeRole !== "SUPER_ADMIN" ? (
+        {!isEnrolled ? (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center py-6 lg:py-12 animate-fadeIn max-w-6xl mx-auto w-full">
             {/* LEFT COLUMN: BRAND MARKETING HERO */}
             <div className="lg:col-span-7 space-y-8 text-left">
