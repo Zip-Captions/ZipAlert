@@ -23,6 +23,26 @@ import {
   Wifi,
   Moon
 } from "lucide-react";
+import { auth, db, googleProvider } from "./firebase";
+import { 
+  signInWithPopup, 
+  signOut, 
+  onAuthStateChanged,
+  User as FirebaseUser
+} from "firebase/auth";
+import { 
+  doc, 
+  onSnapshot, 
+  updateDoc, 
+  getDoc, 
+  setDoc,
+  deleteDoc,
+  collection, 
+  query, 
+  where, 
+  getDocs,
+  limit
+} from "firebase/firestore";
 
 // Relational Multi-Tenant Configurations
 const INITIAL_SCHOOL_ID = "highland_prep_102";
@@ -97,8 +117,7 @@ interface AlertState {
 }
 
 export default function App() {
-  // Master SaaS preview role: SUPER_ADMIN, ADMIN, TEACHER, STUDENT
-  // Master SaaS preview role: SUPER_ADMIN, ADMIN, TEACHER, STUDENT
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [activeRole, setActiveRole] = useState<"SUPER_ADMIN" | "ADMIN" | "TEACHER" | "STUDENT">(() => {
     const saved = localStorage.getItem("zip_alert_role");
     return (saved as any) || "STUDENT";
@@ -110,18 +129,12 @@ export default function App() {
   // Tab controller for Super Admin view: "DISTRICTS", "LICENSES", "GLOBAL_METRICS"
   const [superAdminTab, setSuperAdminTab] = useState<"DISTRICTS" | "LICENSES" | "GLOBAL_METRICS">("DISTRICTS");
 
-  // SaaS Districts database
-  const [districts, setDistricts] = useState<District[]>([
-    { id: "springfield_unified_902", name: "Springfield Unified District", state: "IL", createdAt: "2024-01-10", schoolsCount: 8 },
-    { id: "metropolis_public_701", name: "Metropolis Public Schools", state: "NY", createdAt: "2024-05-15", schoolsCount: 14 }
-  ]);
-
-  // SaaS Licenses database
-  const [licenses, setLicenses] = useState<License[]>([
-    { id: "LIC-SP902", districtId: "springfield_unified_902", status: "ACTIVE", planType: "PREMIUM_ENTERPRISE", maxSchools: 15, maxDevicesPerSchool: 500, createdAt: "2024-01-10", expiresAt: "2027-06-30" },
-    { id: "LIC-MT701", districtId: "metropolis_public_701", status: "ACTIVE", planType: "FREE", maxSchools: 2, maxDevicesPerSchool: 50, createdAt: "2024-05-15", expiresAt: "2026-12-31" },
-    { id: "LIC-HL102", districtId: "springfield_unified_902", status: "ACTIVE", planType: "PREMIUM_ENTERPRISE", maxSchools: 5, maxDevicesPerSchool: 4, createdAt: "2024-06-01", expiresAt: "2027-06-01" } // Capped at 4 for quota checks
-  ]);
+  // Live collections state
+  const [districts, setDistricts] = useState<District[]>([]);
+  const [licenses, setLicenses] = useState<License[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
 
   // Multi-tenant School details
   const [school, setSchool] = useState<SchoolDetails>({
@@ -130,7 +143,7 @@ export default function App() {
     licenseId: "LIC-HL102", // Cap: 4 devices
     name: "Highland Prep Academy",
     createdAt: "2024-06-01T08:00:00Z",
-    admins: ["USR-9901"],
+    admins: [],
     settings: {
       timezone: "America/New_York",
       silentHoursStart: "18:00",
@@ -139,35 +152,9 @@ export default function App() {
     }
   });
 
-  // School Human Members roster
-  const [members, setMembers] = useState<Member[]>([
-    { id: "USR-1022", name: "Dr. Charles Vance", email: "c.vance@highlandprep.edu", role: "TEACHER", status: "ACTIVE", enrolledAt: "2024-09-01", expiresAt: "NEVER" },
-    { id: "USR-2041", name: "Sarah Harris", email: "s.harris@highlandprep.edu", role: "TEACHER", status: "ACTIVE", enrolledAt: "2024-09-02", expiresAt: "NEVER" },
-    { id: "USR-7731", name: "Miles Brody", email: "m.brody@highland.student.edu", role: "STUDENT", status: "ACTIVE", enrolledAt: "2025-09-05", expiresAt: "2028-06-15 (Graduation)" },
-    { id: "USR-8809", name: "Jack Mercer", email: "j.mercer@highland.student.edu", role: "STUDENT", status: "ACTIVE", enrolledAt: "2025-09-05", expiresAt: "2027-06-15 (Graduation)" },
-    { id: "USR-3312", name: "Clara Vance", email: "clara.vance@highland.student.edu", role: "STUDENT", status: "SUSPENDED", enrolledAt: "2026-01-10", expiresAt: "2029-06-15 (Graduation)" }
-  ]);
-
-  // Generated self-enrollment invitations database
-  const [invitations, setInvitations] = useState<Invitation[]>([
-    { code: "XF89A1", role: "TEACHER", createdAt: "2026-05-30T10:00:00Z", expiresAt: "2026-06-05T10:00:00Z", maxUses: 5, usedCount: 2 },
-    { code: "ST9920", role: "STUDENT", createdAt: "2026-05-31T08:00:00Z", expiresAt: "2026-06-01T08:00:00Z", maxUses: 100, usedCount: 14 },
-    { code: "AD5512", role: "ADMIN", createdAt: "2026-05-31T08:00:00Z", expiresAt: "2027-06-01T08:00:00Z", maxUses: 10, usedCount: 1 },
-    { code: "SA1102", role: "SUPER_ADMIN", createdAt: "2026-05-31T08:00:00Z", expiresAt: "2027-06-01T08:00:00Z", maxUses: 5, usedCount: 1 }
-  ]);
-
-  // Devices registered and linked to primary human Member IDs
-  const [devices, setDevices] = useState<Device[]>([
-    { id: "DEV-4091", memberId: "USR-1022", deviceName: "Science Lab B Display", deviceType: "DISPLAY_NODE", registeredAt: "2024-09-01", batteryLevel: 100 },
-    { id: "DEV-8821", memberId: "USR-2041", deviceName: "Gymnasium East Display", deviceType: "DISPLAY_NODE", registeredAt: "2025-01-15", batteryLevel: 98 },
-    { id: "DEV-3012", memberId: "USR-7731", deviceName: "M. Brody (iPhone 15)", deviceType: "MOBILE_PWA", registeredAt: "2025-09-05", batteryLevel: 82 },
-    { id: "DEV-5099", memberId: "USR-8809", deviceName: "J. Mercer (Pixel Watch)", deviceType: "WEAROS", registeredAt: "2026-02-10", batteryLevel: 75 }
-  ]);
-
   // Enrollment forms
   const [enrollmentCode, setEnrollmentCode] = useState("");
   const [enrollmentName, setEnrollmentName] = useState("");
-  const [enrollmentEmail, setEnrollmentEmail] = useState("");
   const [isEnrolled, setIsEnrolled] = useState<boolean>(() => {
     const saved = localStorage.getItem("zip_alert_enrolled");
     return saved === "true";
@@ -180,80 +167,7 @@ export default function App() {
   const [customAlertLevel, setCustomAlertLevel] = useState<"LOCKDOWN" | "FIRE_ALARM" | "SOFT_LOCKDOWN">("LOCKDOWN");
   const [customAlertTarget, setCustomAlertTarget] = useState<"ALL_DEVICES" | "STAFF_ONLY">("ALL_DEVICES");
 
-  // Admin credentials auth states
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
-  const [adminEmail, setAdminEmail] = useState("");
-  const [adminPassword, setAdminPassword] = useState("");
-  const [adminLoginError, setAdminLoginError] = useState("");
 
-  const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setAdminLoginError("");
-    setSuccessMessage("");
-    
-    if (!adminEmail || !adminPassword) {
-      setAdminLoginError("Please enter your email and password.");
-      return;
-    }
-
-    // In production, this bridges directly to Firebase Authentication:
-    // signInWithEmailAndPassword(auth, adminEmail, adminPassword)
-    
-    // SaaS Super Admin credentials verify:
-    if (adminEmail === "director@zipalert.co" && adminPassword === "supersecret123") {
-      localStorage.setItem("zip_alert_enrolled", "true");
-      localStorage.setItem("zip_alert_role", "SUPER_ADMIN");
-      localStorage.setItem("zip_alert_member_id", "USR-0001");
-      localStorage.setItem("zip_alert_member_name", "SaaS Platform Director");
-      localStorage.setItem("zip_alert_member_email", adminEmail);
-      
-      setActiveRole("SUPER_ADMIN");
-      setIsEnrolled(true);
-      setSuccessMessage("Authenticated successfully as SaaS Super Admin.");
-      setAdminEmail("");
-      setAdminPassword("");
-      if ("vibrate" in navigator) navigator.vibrate([100, 50, 100]);
-      return;
-    }
-    
-    // School Admin credentials verify:
-    if (adminEmail === "admin@highlandprep.edu" && adminPassword === "schooladmin123") {
-      localStorage.setItem("zip_alert_enrolled", "true");
-      localStorage.setItem("zip_alert_role", "ADMIN");
-      localStorage.setItem("zip_alert_member_id", "USR-9901");
-      localStorage.setItem("zip_alert_member_name", "Principal John Mercer");
-      localStorage.setItem("zip_alert_member_email", adminEmail);
-      
-      setActiveRole("ADMIN");
-      setIsEnrolled(true);
-      setSuccessMessage("Authenticated successfully as School Admin.");
-      setAdminEmail("");
-      setAdminPassword("");
-      if ("vibrate" in navigator) navigator.vibrate([100, 50, 100]);
-      return;
-    }
-
-    setAdminLoginError("Invalid administrator credentials. Access blocked.");
-  };
-
-  const handleCustomBroadcastSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customAlertMessage.trim()) {
-      alert("Please enter a custom alert message.");
-      return;
-    }
-    
-    // Trigger the alert in Firestore/state
-    triggerAlert(
-      customAlertLevel, 
-      customAlertMessage.trim()
-    );
-    
-    setSuccessMessage(`Custom broadcast dispatched: ${customAlertLevel} sent to ${customAlertTarget === "ALL_DEVICES" ? "All Devices" : "Staff Only"}.`);
-    setCustomAlertMessage("");
-    // Clear success message after 5 seconds
-    setTimeout(() => setSuccessMessage(""), 5000);
-  };
 
   // System alert state (0.5 KiB flat micro-payload architecture)
   const [currentAlert, setCurrentAlert] = useState<AlertState>({
@@ -303,19 +217,54 @@ export default function App() {
     return !lic || lic.status !== "ACTIVE";
   };
 
-  // --- BILLING PREVENTION: snapshot connection manager ---
+  // --- STRICTLY LIVE: Google Sign-In Action ---
+  const handleGoogleSignInAction = async () => {
+    setEnrollmentError("");
+    try {
+      await signInWithPopup(auth, googleProvider);
+      if ("vibrate" in navigator) navigator.vibrate([100, 50, 100]);
+    } catch (error: any) {
+      console.error("[PWA Auth] Google Auth Error:", error);
+      setEnrollmentError(`Google Sign-In failed: ${error.message}`);
+    }
+  };
+
+  // --- PROD FIRESTORE: snapshot connection manager ---
   const establishSnapshotListener = () => {
     if (unsubscribeRef.current) unsubscribeRef.current();
 
     setConnectionState("CONNECTED");
-    console.log("[PWA Client] Natively binding to single-document Firestore socket (onSnapshot). Infrastructure cost = $0.00.");
+    
+    // Bind directly to live Firestore document `/schools/{schoolId}/system_status/current_alert`
+    const alertDocRef = doc(db, "schools", school.id, "system_status", "current_alert");
+    console.log(`[PWA Client] Connecting live snapshot listener to Firestore path: ${alertDocRef.path}`);
 
-    // Simulated Firestore document onSnapshot socket unbinder
-    const mockUnsubscribe = () => {
-      console.log("[PWA Client] Unsubscribed from Firestore snapshot listener. Socket closed. Billing halted.");
-    };
+    const unsubscribe = onSnapshot(alertDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        console.log("[PWA Client] Live Firestore alert updated:", data);
+        setCurrentAlert({
+          status: data.status || "NORMAL",
+          message: data.message || "System fully operational.",
+          triggeredBy: data.triggeredBy || "System Core",
+          timestamp: data.timestamp || new Date().toISOString()
+        });
+      } else {
+        setCurrentAlert({
+          status: "NORMAL",
+          message: "System fully operational. All security nodes active.",
+          triggeredBy: "System Core",
+          timestamp: new Date().toISOString()
+        });
+      }
+    }, (error) => {
+      console.error("[PWA Client] Live snapshot listener error:", error);
+      if (error.code === "permission-denied") {
+        setConnectionState("SUSPENDED");
+      }
+    });
 
-    unsubscribeRef.current = mockUnsubscribe;
+    unsubscribeRef.current = unsubscribe;
   };
 
   const disconnectSnapshotListener = () => {
@@ -326,6 +275,23 @@ export default function App() {
     setConnectionState("SLEEPING");
     releaseWakeLock();
     stopHaptics();
+  };
+
+  const handleCustomBroadcastSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customAlertMessage.trim()) {
+      alert("Please enter a custom alert message.");
+      return;
+    }
+    
+    triggerAlert(
+      customAlertLevel, 
+      customAlertMessage.trim()
+    );
+    
+    setSuccessMessage(`Custom broadcast dispatched: ${customAlertLevel} sent to ${customAlertTarget === "ALL_DEVICES" ? "All Devices" : "Staff Only"}.`);
+    setCustomAlertMessage("");
+    setTimeout(() => setSuccessMessage(""), 5000);
   };
 
   // User input tracking to reset the 4-hour idle timer
@@ -357,73 +323,165 @@ export default function App() {
   };
 
 
-  // URL Auto-Enrollment and Parameter Parsing on mount
+  // --- STRICTLY LIVE: Firebase Auth Observer & Session Hydration ---
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      setCurrentUser(firebaseUser);
+      if (firebaseUser) {
+        console.log("[PWA Auth] Google User authenticated:", firebaseUser.email);
+        
+        // 1. Check if Super Admin in global /users/{uid}
+        try {
+          const superAdminDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+          if (superAdminDoc.exists() && superAdminDoc.data().role === "SUPER_ADMIN") {
+            setActiveRole("SUPER_ADMIN");
+            setIsEnrolled(true);
+            localStorage.setItem("zip_alert_enrolled", "true");
+            localStorage.setItem("zip_alert_role", "SUPER_ADMIN");
+            localStorage.setItem("zip_alert_member_id", firebaseUser.uid);
+            localStorage.setItem("zip_alert_member_name", firebaseUser.displayName || "SaaS Director");
+            establishSnapshotListener();
+            return;
+          }
+        } catch (err) {
+          console.warn("[PWA Auth] Error verifying Super Admin status:", err);
+        }
+
+        // 2. Check roster under /schools/{schoolId}/members/{uid}
+        try {
+          const rosterDoc = await getDoc(doc(db, "schools", school.id, "members", firebaseUser.uid));
+          if (rosterDoc.exists()) {
+            const data = rosterDoc.data() as Member;
+            setActiveRole(data.role);
+            setIsEnrolled(true);
+            localStorage.setItem("zip_alert_enrolled", "true");
+            localStorage.setItem("zip_alert_role", data.role);
+            localStorage.setItem("zip_alert_member_id", firebaseUser.uid);
+            localStorage.setItem("zip_alert_member_name", data.name);
+            establishSnapshotListener();
+            return;
+          }
+        } catch (err) {
+          console.warn("[PWA Auth] Error checking roster document:", err);
+        }
+
+        // 3. Fallback: Search roster for a pre-populated email match
+        try {
+          const membersRef = collection(db, "schools", school.id, "members");
+          const q = query(membersRef, where("email", "==", firebaseUser.email), limit(1));
+          const querySnapshot = await getDocs(q);
+          if (!querySnapshot.empty) {
+            const matchedDoc = querySnapshot.docs[0];
+            const data = matchedDoc.data() as Member;
+            
+            // Re-write roster record under their authenticated Google UID
+            await setDoc(doc(db, "schools", school.id, "members", firebaseUser.uid), {
+              ...data,
+              id: firebaseUser.uid
+            });
+            
+            setActiveRole(data.role);
+            setIsEnrolled(true);
+            localStorage.setItem("zip_alert_enrolled", "true");
+            localStorage.setItem("zip_alert_role", data.role);
+            localStorage.setItem("zip_alert_member_id", firebaseUser.uid);
+            localStorage.setItem("zip_alert_member_name", data.name);
+            establishSnapshotListener();
+            return;
+          }
+        } catch (err) {
+          console.error("[PWA Auth] Email fallback check failed:", err);
+        }
+
+        // 4. Authenticated but not enrolled yet
+        setIsEnrolled(false);
+      } else {
+        // Sign out cleared
+        setIsEnrolled(false);
+        setActiveRole("STUDENT");
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, [school.id]);
+
+  // --- PROD DATA SYNC: Hydrate dynamic lists from live Firestore ---
+  useEffect(() => {
+    if (isEnrolled && (activeRole === "ADMIN" || activeRole === "SUPER_ADMIN")) {
+      // 1. Load active roster
+      const rosterQuery = collection(db, "schools", school.id, "members");
+      getDocs(rosterQuery).then(snapshot => {
+        const loadedMembers: Member[] = [];
+        snapshot.forEach(doc => loadedMembers.push(doc.data() as Member));
+        if (loadedMembers.length > 0) setMembers(loadedMembers);
+      }).catch(err => console.error("Roster fetch error:", err));
+
+      // 2. Load active devices
+      const devicesQuery = collection(db, "schools", school.id, "devices");
+      getDocs(devicesQuery).then(snapshot => {
+        const loadedDevices: Device[] = [];
+        snapshot.forEach(doc => loadedDevices.push(doc.data() as Device));
+        if (loadedDevices.length > 0) setDevices(loadedDevices);
+      }).catch(err => console.error("Devices fetch error:", err));
+
+      // 3. Load invitations
+      const invitesQuery = collection(db, "schools", school.id, "invitations");
+      getDocs(invitesQuery).then(snapshot => {
+        const loadedInvites: Invitation[] = [];
+        snapshot.forEach(doc => loadedInvites.push(doc.data() as Invitation));
+        if (loadedInvites.length > 0) setInvitations(loadedInvites);
+      }).catch(err => console.error("Invitations fetch error:", err));
+    }
+
+    if (isEnrolled && activeRole === "SUPER_ADMIN") {
+      // 4. Load districts (SaaS Admin)
+      getDocs(collection(db, "districts")).then(snapshot => {
+        const loadedDistricts: District[] = [];
+        snapshot.forEach(doc => loadedDistricts.push(doc.data() as District));
+        if (loadedDistricts.length > 0) setDistricts(loadedDistricts);
+      }).catch(err => console.error("Districts fetch error:", err));
+
+      // 5. Load licenses (SaaS Admin)
+      getDocs(collection(db, "licenses")).then(snapshot => {
+        const loadedLicenses: License[] = [];
+        snapshot.forEach(doc => loadedLicenses.push(doc.data() as License));
+        if (loadedLicenses.length > 0) setLicenses(loadedLicenses);
+      }).catch(err => console.error("Licenses fetch error:", err));
+    }
+  }, [isEnrolled, activeRole, adminTab, school.id]);
+
+  // --- URL INVITE LINKER: Bind pending links ---
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const enrollCode = params.get("enroll") || params.get("token") || params.get("invite");
-    const nameParam = params.get("name") || params.get("username") || "Auto-Linked Companion Phone";
-    const emailParam = params.get("email") || "standby@school.edu";
+    const nameParam = params.get("name") || params.get("username") || "";
 
     if (enrollCode) {
-      console.log("[PWA Linker] URL-based auto-enrollment parameter detected:", enrollCode);
-      const codeUpper = enrollCode.trim().toUpperCase();
-      const matchingInvite = invitations.find(invite => invite.code.toUpperCase() === codeUpper);
-      
-      if (matchingInvite) {
-        // Enforce quota checks
-        const activeLic = licenses.find(lic => lic.id === school.licenseId);
-        if (activeLic && devices.length >= activeLic.maxDevicesPerSchool) {
-          setEnrollmentError(`Linkage failed: District licensing quota reached.`);
-          return;
-        }
-
-        // Generate enrollment member records
-        const newMemberId = `USR-${Math.floor(1000 + Math.random() * 9000)}`;
-        const newMember: Member = {
-          id: newMemberId,
-          name: nameParam,
-          email: emailParam,
-          role: matchingInvite.role,
-          status: "ACTIVE",
-          enrolledAt: new Date().toISOString().split("T")[0],
-          expiresAt: matchingInvite.role === "STUDENT" ? `${new Date().getFullYear() + 3}-06-15 (Graduation)` : "NEVER"
-        };
-
-        const newDeviceId = `DEV-${Math.floor(1000 + Math.random() * 9000)}`;
-        const newDevice: Device = {
-          id: newDeviceId,
-          memberId: newMemberId,
-          deviceName: `${nameParam}'s Companion Phone`,
-          deviceType: "MOBILE_PWA",
-          registeredAt: new Date().toISOString().split("T")[0],
-          batteryLevel: 99
-        };
-
-        // Update states
-        setMembers(prev => [...prev, newMember]);
-        setDevices(prev => [...prev, newDevice]);
-        setInvitations(prev => prev.map(inv => inv.code === matchingInvite.code ? { ...inv, usedCount: inv.usedCount + 1 } : inv));
-        
-        // Setup persistent storage
-        localStorage.setItem("zip_alert_enrolled", "true");
-        localStorage.setItem("zip_alert_role", matchingInvite.role);
-        localStorage.setItem("zip_alert_member_id", newMemberId);
-        localStorage.setItem("zip_alert_member_name", nameParam);
-        localStorage.setItem("zip_alert_member_email", emailParam);
-
-        setActiveRole(matchingInvite.role);
-        setIsEnrolled(true);
-        setSuccessMessage(`Welcome, ${nameParam}! Enrollment linked successfully.`);
-        if ("vibrate" in navigator) navigator.vibrate([150, 75, 150]);
-
-        // Silently clear query params from browser bar
-        const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-        window.history.replaceState({ path: cleanUrl }, "", cleanUrl);
-      } else {
-        setEnrollmentError("Auto-enrollment token is invalid or expired.");
+      console.log("[PWA Linker] URL-based invite token intercepted:", enrollCode);
+      localStorage.setItem("zip_alert_pending_invite", enrollCode.trim().toUpperCase());
+      if (nameParam) {
+        localStorage.setItem("zip_alert_pending_name", nameParam);
       }
+      
+      // Silently clean address bar
+      const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+      window.history.replaceState({ path: cleanUrl }, "", cleanUrl);
     }
   }, []);
+
+  useEffect(() => {
+    if (currentUser && !isEnrolled) {
+      const pendingInvite = localStorage.getItem("zip_alert_pending_invite");
+      const pendingName = localStorage.getItem("zip_alert_pending_name") || currentUser.displayName || "";
+      if (pendingInvite) {
+        console.log("[PWA Linker] Pre-filling pending invite:", pendingInvite);
+        setEnrollmentCode(pendingInvite);
+        setEnrollmentName(pendingName);
+        localStorage.removeItem("zip_alert_pending_invite");
+        localStorage.removeItem("zip_alert_pending_name");
+      }
+    }
+  }, [currentUser, isEnrolled]);
 
   // Listen to mouse, key, and touch events to maintain connection
   useEffect(() => {
@@ -524,114 +582,147 @@ export default function App() {
     };
   }, [currentAlert.status, activeRole, isEnrolled, licenses, connectionState]);
 
-  // Mock helpers to resolve active user profile
+  // Live profile helper to resolve active user profile
   const getActiveMember = (): Member | undefined => {
     if (activeRole === "SUPER_ADMIN") {
-      return { id: "USR-0001", name: "SaaS Platform Director", email: "director@zipalert.co", role: "ADMIN", status: "ACTIVE", enrolledAt: "2023-01-01", expiresAt: "NEVER" };
+      return { id: currentUser?.uid || "USR-0001", name: currentUser?.displayName || "SaaS Platform Director", email: currentUser?.email || "director@zipalert.co", role: "ADMIN", status: "ACTIVE", enrolledAt: "2023-01-01", expiresAt: "NEVER" };
     }
-    if (activeRole === "ADMIN") {
-      return { id: "USR-9901", name: "Principal John Mercer", email: "j.mercer@highlandprep.edu", role: "ADMIN", status: "ACTIVE", enrolledAt: "2024-06-01", expiresAt: "NEVER" };
-    }
-    if (activeRole === "TEACHER") {
-      return members.find(m => m.role === "TEACHER" && m.status === "ACTIVE") || members[0];
-    }
-    return members.find(m => m.role === "STUDENT" && m.status === "ACTIVE") || members[2];
+    return members.find(m => m.id === currentUser?.uid) || {
+      id: currentUser?.uid || "USR-MOCK",
+      name: currentUser?.displayName || localStorage.getItem("zip_alert_member_name") || "Verified Node",
+      email: currentUser?.email || localStorage.getItem("zip_alert_member_email") || "",
+      role: activeRole,
+      status: "ACTIVE",
+      enrolledAt: new Date().toISOString().split("T")[0],
+      expiresAt: "NEVER"
+    };
   };
 
-  // Enrollment validation code
-  const handleSelfEnrollment = (e: React.FormEvent) => {
+  // Live Enrollment validation code
+  const handleSelfEnrollment = async (e: React.FormEvent) => {
     e.preventDefault();
     setEnrollmentError("");
 
-    const activeLic = getActiveLicense();
-    
-    // 1. Validate Licensing
-    if (isLicenseViolated()) {
-      setEnrollmentError("This school's license has expired or is suspended. Access locked.");
+    if (!currentUser) {
+      setEnrollmentError("Please sign in with Google first.");
       return;
     }
 
-    // 2. Validate Quota constraints (Hard licensing cap check)
-    if (activeLic && devices.length >= activeLic.maxDevicesPerSchool) {
-      setEnrollmentError(`District licensing quota reached. (Max ${activeLic.maxDevicesPerSchool} devices allowed per school).`);
-      return;
-    }
-
-    if (!enrollmentCode || !enrollmentName || !enrollmentEmail) {
+    if (!enrollmentCode || !enrollmentName) {
       setEnrollmentError("Please fill out all fields.");
       return;
     }
 
-    // Match invite token
-    const matchingInvite = invitations.find(invite => invite.code.toUpperCase() === enrollmentCode.trim().toUpperCase());
-    if (!matchingInvite) {
-      setEnrollmentError("Invalid or expired invitation token.");
-      return;
+    try {
+      const activeLic = getActiveLicense();
+      
+      // 1. Validate Licensing
+      if (isLicenseViolated()) {
+        setEnrollmentError("This school's license has expired or is suspended. Access locked.");
+        return;
+      }
+
+      // 2. Validate Quota constraints (Hard licensing cap check)
+      if (activeLic && devices.length >= activeLic.maxDevicesPerSchool) {
+        setEnrollmentError(`District licensing quota reached. (Max ${activeLic.maxDevicesPerSchool} devices allowed per school).`);
+        return;
+      }
+
+      // 3. Match invite token from Firestore
+      const inviteDocRef = doc(db, "schools", school.id, "invitations", enrollmentCode.trim().toUpperCase());
+      const inviteDoc = await getDoc(inviteDocRef);
+      if (!inviteDoc.exists()) {
+        setEnrollmentError("Invalid or expired invitation token.");
+        return;
+      }
+
+      const invite = inviteDoc.data() as Invitation;
+      if (invite.usedCount >= invite.maxUses) {
+        setEnrollmentError("This invitation code has reached its maximum use limit.");
+        return;
+      }
+
+      // 4. Create member record in Firestore
+      const newMember: Member = {
+        id: currentUser.uid,
+        name: enrollmentName,
+        email: currentUser.email!,
+        role: invite.role,
+        status: "ACTIVE",
+        enrolledAt: new Date().toISOString().split("T")[0],
+        expiresAt: invite.role === "STUDENT" ? `${new Date().getFullYear() + 3}-06-15 (Graduation)` : "NEVER"
+      };
+
+      await setDoc(doc(db, "schools", school.id, "members", currentUser.uid), newMember);
+
+      // 5. Register device in Firestore
+      const newDeviceId = `DEV-${Math.floor(1000 + Math.random() * 9000)}`;
+      const newDevice: Device = {
+        id: newDeviceId,
+        memberId: currentUser.uid,
+        deviceName: `${enrollmentName}'s Companion Phone`,
+        deviceType: "MOBILE_PWA",
+        registeredAt: new Date().toISOString().split("T")[0],
+        batteryLevel: 95
+      };
+
+      await setDoc(doc(db, "schools", school.id, "devices", newDeviceId), newDevice);
+
+      // 6. Update invite usage count in Firestore
+      await updateDoc(inviteDocRef, {
+        usedCount: invite.usedCount + 1
+      });
+
+      // 7. Update state and local storage details
+      setActiveRole(invite.role);
+      setIsEnrolled(true);
+      
+      localStorage.setItem("zip_alert_enrolled", "true");
+      localStorage.setItem("zip_alert_role", invite.role);
+      localStorage.setItem("zip_alert_member_id", currentUser.uid);
+      localStorage.setItem("zip_alert_member_name", enrollmentName);
+      localStorage.setItem("zip_alert_member_email", currentUser.email!);
+      setSuccessMessage(`Welcome, ${enrollmentName}! Account successfully linked.`);
+
+      if ("vibrate" in navigator) navigator.vibrate([100, 50, 100]);
+    } catch (err: any) {
+      console.error("[PWA Enrollment] Enrollment error:", err);
+      setEnrollmentError(`Enrollment failed: ${err.message}`);
     }
-
-    // Create member record
-    const newMemberId = `USR-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newMember: Member = {
-      id: newMemberId,
-      name: enrollmentName,
-      email: enrollmentEmail,
-      role: matchingInvite.role,
-      status: "ACTIVE",
-      enrolledAt: new Date().toISOString().split("T")[0],
-      expiresAt: matchingInvite.role === "STUDENT" ? `${new Date().getFullYear() + 3}-06-15 (Graduation)` : "NEVER"
-    };
-
-    // Register device
-    const newDeviceId = `DEV-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newDevice: Device = {
-      id: newDeviceId,
-      memberId: newMemberId,
-      deviceName: `${enrollmentName}'s Companion Phone`,
-      deviceType: "MOBILE_PWA",
-      registeredAt: new Date().toISOString().split("T")[0],
-      batteryLevel: 95
-    };
-
-    setMembers([...members, newMember]);
-    setDevices([...devices, newDevice]);
-    
-    // Increment invite usage
-    setInvitations(invitations.map(inv => inv.code === matchingInvite.code ? { ...inv, usedCount: inv.usedCount + 1 } : inv));
-    
-    // Reroute based on enrolled role
-    setActiveRole(matchingInvite.role);
-    setIsEnrolled(true);
-    
-    // Persist details to localStorage
-    localStorage.setItem("zip_alert_enrolled", "true");
-    localStorage.setItem("zip_alert_role", matchingInvite.role);
-    localStorage.setItem("zip_alert_member_id", newMemberId);
-    localStorage.setItem("zip_alert_member_name", enrollmentName);
-    localStorage.setItem("zip_alert_member_email", enrollmentEmail);
-    setSuccessMessage(`Welcome, ${enrollmentName}! Account successfully linked.`);
-
-    if ("vibrate" in navigator) navigator.vibrate([100, 50, 100]);
   };
 
-  // Admin trigger handlers
-  const triggerAlert = (status: AlertState["status"], message: string) => {
-    setCurrentAlert({
-      status,
-      message,
-      triggeredBy: getActiveMember()?.name || "Verified Administrator",
-      timestamp: new Date().toISOString()
-    });
-    if ("vibrate" in navigator) navigator.vibrate([100, 50, 100]);
+  // Live Admin trigger handlers
+  const triggerAlert = async (status: AlertState["status"], message: string) => {
+    const alertDocRef = doc(db, "schools", school.id, "system_status", "current_alert");
+    try {
+      await setDoc(alertDocRef, {
+        status,
+        message,
+        triggeredBy: getActiveMember()?.name || "Verified Administrator",
+        timestamp: new Date().toISOString()
+      }, { merge: true });
+      
+      if ("vibrate" in navigator) navigator.vibrate([100, 50, 100]);
+    } catch (error: any) {
+      console.error("[PWA Client] Failed to trigger live lockdown alert:", error);
+      alert("Crisis Broadcast failed: insufficient Firestore credentials.");
+    }
   };
 
-  const resetAlert = () => {
-    setCurrentAlert({
-      status: "NORMAL",
-      message: "System fully operational. All security nodes active.",
-      triggeredBy: getActiveMember()?.name || "Verified Administrator",
-      timestamp: new Date().toISOString()
-    });
-    stopHaptics();
+  const resetAlert = async () => {
+    const alertDocRef = doc(db, "schools", school.id, "system_status", "current_alert");
+    try {
+      await setDoc(alertDocRef, {
+        status: "NORMAL",
+        message: "System fully operational. All security nodes active.",
+        triggeredBy: getActiveMember()?.name || "Verified Administrator",
+        timestamp: new Date().toISOString()
+      }, { merge: true });
+      
+      stopHaptics();
+    } catch (error: any) {
+      console.error("[PWA Client] Failed to reset live alert:", error);
+    }
   };
 
   // Hold triggers
@@ -671,26 +762,33 @@ export default function App() {
     }
   };
 
-  // Roster Management
-  const toggleMemberStatus = (id: string) => {
-    setMembers(members.map(m => {
-      if (m.id === id) {
-        const newStatus = m.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
-        return { ...m, status: newStatus };
+  // Live Roster Management
+  const toggleMemberStatus = async (id: string) => {
+    try {
+      const m = members.find(x => x.id === id);
+      if (m) {
+        const nextStatus = m.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
+        await updateDoc(doc(db, "schools", school.id, "members", id), { status: nextStatus });
+        setMembers(members.map(x => x.id === id ? { ...x, status: nextStatus } : x));
+        if ("vibrate" in navigator) navigator.vibrate(50);
       }
-      return m;
-    }));
-    if ("vibrate" in navigator) navigator.vibrate(50);
+    } catch (err) {
+      console.error("Failed to toggle status:", err);
+    }
   };
 
-  const removeMember = (id: string) => {
-    setMembers(members.filter(m => m.id !== id));
-    setDevices(devices.filter(d => d.memberId !== id));
-    if ("vibrate" in navigator) navigator.vibrate(80);
+  const removeMember = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "schools", school.id, "members", id));
+      setMembers(members.filter(m => m.id !== id));
+      if ("vibrate" in navigator) navigator.vibrate(80);
+    } catch (err) {
+      console.error("Failed to remove member:", err);
+    }
   };
 
-  // Invitation creation
-  const handleCreateInvitation = (e: React.FormEvent) => {
+  // Live Invitation creation
+  const handleCreateInvitation = async (e: React.FormEvent) => {
     e.preventDefault();
     const chars = "ABCDEFGHJKLMNOPQRSTUVWXYZ0123456789";
     let token = "";
@@ -707,12 +805,17 @@ export default function App() {
       usedCount: 0
     };
 
-    setInvitations([newInvite, ...invitations]);
-    if ("vibrate" in navigator) navigator.vibrate(60);
+    try {
+      await setDoc(doc(db, "schools", school.id, "invitations", token), newInvite);
+      setInvitations([newInvite, ...invitations]);
+      if ("vibrate" in navigator) navigator.vibrate(60);
+    } catch (err) {
+      console.error("Failed to create invite:", err);
+    }
   };
 
   // Super Admin - Create District
-  const handleCreateDistrict = (e: React.FormEvent) => {
+  const handleCreateDistrict = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDistrictName || !newDistrictState) return;
 
@@ -725,14 +828,19 @@ export default function App() {
       schoolsCount: 0
     };
 
-    setDistricts([...districts, newDist]);
-    setNewDistrictName("");
-    setNewDistrictState("");
-    if ("vibrate" in navigator) navigator.vibrate(60);
+    try {
+      await setDoc(doc(db, "districts", newId), newDist);
+      setDistricts([...districts, newDist]);
+      setNewDistrictName("");
+      setNewDistrictState("");
+      if ("vibrate" in navigator) navigator.vibrate(60);
+    } catch (err) {
+      console.error("Failed to create district:", err);
+    }
   };
 
   // Super Admin - Allocate License
-  const handleAllocateLicense = (e: React.FormEvent) => {
+  const handleAllocateLicense = async (e: React.FormEvent) => {
     e.preventDefault();
     
     const newLicId = `LIC-${Math.floor(10000 + Math.random() * 90000)}`;
@@ -747,42 +855,60 @@ export default function App() {
       expiresAt: newLicenseExpires
     };
 
-    setLicenses([newLic, ...licenses]);
-    if ("vibrate" in navigator) navigator.vibrate([100, 50, 100]);
+    try {
+      await setDoc(doc(db, "licenses", newLicId), newLic);
+      setLicenses([newLic, ...licenses]);
+      if ("vibrate" in navigator) navigator.vibrate([100, 50, 100]);
+    } catch (err) {
+      console.error("Failed to allocate license:", err);
+    }
   };
 
   // Toggles the status of a specific district license (to test lockouts)
-  const toggleLicenseStatus = (id: string) => {
-    setLicenses(licenses.map(lic => {
-      if (lic.id === id) {
-        const nextStatus = lic.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
-        return { ...lic, status: nextStatus };
-      }
-      return lic;
-    }));
-    if ("vibrate" in navigator) navigator.vibrate(50);
+  const toggleLicenseStatus = async (id: string) => {
+    const lic = licenses.find(x => x.id === id);
+    if (!lic) return;
+    const nextStatus = lic.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
+    try {
+      await updateDoc(doc(db, "licenses", id), { status: nextStatus });
+      setLicenses(licenses.map(l => l.id === id ? { ...l, status: nextStatus } : l));
+      if ("vibrate" in navigator) navigator.vibrate(50);
+    } catch (err) {
+      console.error("Failed to toggle license:", err);
+    }
   };
 
   // School settings updates
-  const handleUpdateSchoolSettings = (e: React.FormEvent) => {
+  const handleUpdateSchoolSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ("vibrate" in navigator) navigator.vibrate([50, 50]);
-    alert("School settings committed to Firestore.");
+    try {
+      await setDoc(doc(db, "schools", school.id), {
+        settings: school.settings
+      }, { merge: true });
+      if ("vibrate" in navigator) navigator.vibrate([50, 50]);
+      alert("School settings committed to Firestore.");
+    } catch (err) {
+      console.error("Failed to update school settings:", err);
+    }
   };
 
   // Sign out / Disconnect device node cleanly
-  const handleSignOut = () => {
-    localStorage.removeItem("zip_alert_enrolled");
-    localStorage.removeItem("zip_alert_role");
-    localStorage.removeItem("zip_alert_member_id");
-    localStorage.removeItem("zip_alert_member_name");
-    localStorage.removeItem("zip_alert_member_email");
-    setIsEnrolled(false);
-    setActiveRole("STUDENT");
-    setSuccessMessage("");
-    setEnrollmentError("");
-    setAdminLoginError("");
-    if ("vibrate" in navigator) navigator.vibrate([100, 50]);
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      localStorage.removeItem("zip_alert_enrolled");
+      localStorage.removeItem("zip_alert_role");
+      localStorage.removeItem("zip_alert_member_id");
+      localStorage.removeItem("zip_alert_member_name");
+      localStorage.removeItem("zip_alert_member_email");
+      setIsEnrolled(false);
+      setActiveRole("STUDENT");
+      setSuccessMessage("");
+      setEnrollmentError("");
+      if ("vibrate" in navigator) navigator.vibrate([100, 50]);
+    } catch (error) {
+      console.error("[PWA Auth] Sign-out failed:", error);
+    }
   };
 
   const activeMember = getActiveMember();
@@ -961,15 +1087,44 @@ export default function App() {
               <div className="glass-panel p-8 rounded-3xl space-y-6 border-white/10 shadow-2xl relative overflow-hidden group">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-cyan-500/10 transition-colors duration-500" />
                 
-                {!showAdminLogin ? (
+                {!currentUser ? (
+                  <>
+                    <div className="text-center space-y-4 py-4">
+                      <div className="w-16 h-16 bg-cyan-500/10 rounded-2xl mx-auto flex items-center justify-center border border-cyan-500/20 shadow-inner shadow-cyan-500/10 animate-pulse">
+                        <ShieldAlert className="w-8 h-8 text-cyan-400" />
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-2xl font-black text-white tracking-wide uppercase">Roster Verification</h3>
+                        <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
+                          ZipAlert enforces strict multi-tenant roster boundaries. Please authenticate with your Google identity to establish secure standby connection credentials.
+                        </p>
+                      </div>
+                    </div>
+
+                    {enrollmentError && (
+                      <div className="p-3.5 bg-red-950/30 border border-red-500/25 text-red-400 text-xs rounded-xl flex items-center gap-2.5 animate-pulse text-left font-sans">
+                        <XCircle className="w-4.5 h-4.5 text-red-400 shrink-0" />
+                        <span className="font-semibold">{enrollmentError}</span>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleGoogleSignInAction}
+                      className="w-full py-4 bg-white hover:bg-slate-100 text-slate-950 text-sm font-black rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-3 cursor-pointer shadow-lg shadow-white/5 uppercase tracking-wide border-0 font-sans cursor-pointer"
+                    >
+                      <Globe className="w-5 h-5 text-slate-900 shrink-0" />
+                      <span>Continue with Google</span>
+                    </button>
+                  </>
+                ) : (
                   <>
                     <div className="text-center space-y-2">
                       <div className="w-12 h-12 bg-cyan-500/10 rounded-xl mx-auto flex items-center justify-center border border-cyan-500/20 shadow-inner">
                         <UserPlus className="w-6 h-6 text-cyan-400" />
                       </div>
-                      <h3 className="text-2xl font-black text-white tracking-wide uppercase">Register Device</h3>
+                      <h3 className="text-2xl font-black text-white tracking-wide uppercase">Link Account</h3>
                       <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
-                        Enter your school-issued 6-digit link token below to establish secure standby connection credentials.
+                        Enter your school-issued 6-digit invitation code to associate your Google account with the crisis network roster.
                       </p>
                     </div>
 
@@ -981,12 +1136,15 @@ export default function App() {
                         </div>
                       )}
 
-                      {successMessage && (
-                        <div className="p-3.5 bg-emerald-950/30 border border-emerald-500/25 text-emerald-400 text-xs rounded-xl flex items-center gap-2.5">
-                          <CheckCircle className="w-4.5 h-4.5 text-emerald-400 shrink-0" />
-                          <span className="font-semibold">{successMessage}</span>
-                        </div>
-                      )}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Google Identity</label>
+                        <input 
+                          type="text" 
+                          disabled
+                          value={currentUser.email || ""}
+                          className="w-full px-4 py-3 bg-white/[0.02] border border-white/5 rounded-xl text-slate-400 text-sm focus:outline-none cursor-not-allowed"
+                        />
+                      </div>
 
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">6-Digit Invitation Code</label>
@@ -998,7 +1156,7 @@ export default function App() {
                             placeholder="e.g. XF89A1"
                             value={enrollmentCode}
                             onChange={(e) => setEnrollmentCode(e.target.value.toUpperCase())}
-                            className="w-full pl-11 pr-4 py-3 bg-[#090a10] border border-white/10 focus:border-cyan-500 rounded-xl text-white text-sm font-mono placeholder:text-slate-655 focus:outline-none transition-colors"
+                            className="w-full pl-11 pr-4 py-3 bg-[#090a10] border border-white/10 focus:border-cyan-500 rounded-xl text-white text-sm font-mono placeholder:text-slate-600 focus:outline-none transition-colors"
                           />
                         </div>
                       </div>
@@ -1010,18 +1168,7 @@ export default function App() {
                           placeholder="e.g. Miles Brody"
                           value={enrollmentName}
                           onChange={(e) => setEnrollmentName(e.target.value)}
-                          className="w-full px-4 py-3 bg-[#090a10] border border-white/10 focus:border-cyan-500 rounded-xl text-white text-sm placeholder:text-slate-655 focus:outline-none transition-colors"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">School Email Address</label>
-                        <input 
-                          type="email" 
-                          placeholder="e.g. m.brody@school.edu"
-                          value={enrollmentEmail}
-                          onChange={(e) => setEnrollmentEmail(e.target.value)}
-                          className="w-full px-4 py-3 bg-[#090a10] border border-white/10 focus:border-cyan-500 rounded-xl text-white text-sm placeholder:text-slate-655 focus:outline-none transition-colors"
+                          className="w-full px-4 py-3 bg-[#090a10] border border-white/10 focus:border-cyan-500 rounded-xl text-white text-sm placeholder:text-slate-600 focus:outline-none transition-colors"
                         />
                       </div>
 
@@ -1035,73 +1182,15 @@ export default function App() {
 
                     <div className="border-t border-white/5 pt-4 text-center">
                       <button 
-                        onClick={() => { setShowAdminLogin(true); setEnrollmentError(""); setSuccessMessage(""); }}
-                        className="text-xs text-cyan-400 hover:text-cyan-300 font-semibold bg-transparent border-0 cursor-pointer"
+                        onClick={handleSignOut}
+                        className="text-xs text-red-400 hover:text-red-300 font-semibold bg-transparent border-0 cursor-pointer uppercase tracking-wider font-mono"
                       >
-                        Are you an Administrator? Sign In
+                        Cancel & Sign Out
                       </button>
                     </div>
                   </>
-                ) : (
-                  <>
-                    <div className="text-center space-y-2">
-                      <div className="w-12 h-12 bg-emerald-500/10 rounded-xl mx-auto flex items-center justify-center border border-emerald-500/20 shadow-inner">
-                        <Key className="w-6 h-6 text-emerald-400" />
-                      </div>
-                      <h3 className="text-2xl font-black text-white tracking-wide uppercase">Admin Sign In</h3>
-                      <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
-                        Authenticate with your District or School Administrator credentials to access systems control.
-                      </p>
-                    </div>
-
-                    <form onSubmit={handleAdminLogin} className="space-y-4 font-sans text-left">
-                      {adminLoginError && (
-                        <div className="p-3.5 bg-red-950/30 border border-red-500/25 text-red-400 text-xs rounded-xl flex items-center gap-2.5 animate-pulse">
-                          <XCircle className="w-4.5 h-4.5 text-red-400 shrink-0" />
-                          <span className="font-semibold">{adminLoginError}</span>
-                        </div>
-                      )}
-
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Administrator Email</label>
-                        <input 
-                          type="email" 
-                          placeholder="director@zipalert.co"
-                          value={adminEmail}
-                          onChange={(e) => setAdminEmail(e.target.value)}
-                          className="w-full px-4 py-3 bg-[#090a10] border border-white/10 focus:border-cyan-500 rounded-xl text-white text-sm placeholder:text-slate-655 focus:outline-none transition-colors"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Security Password</label>
-                        <input 
-                          type="password" 
-                          placeholder="••••••••"
-                          value={adminPassword}
-                          onChange={(e) => setAdminPassword(e.target.value)}
-                          className="w-full px-4 py-3 bg-[#090a10] border border-white/10 focus:border-cyan-500 rounded-xl text-white text-sm placeholder:text-slate-655 focus:outline-none transition-colors"
-                        />
-                      </div>
-
-                      <button 
-                        type="submit"
-                        className="w-full py-4 mt-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 uppercase tracking-wide border-0 cursor-pointer"
-                      >
-                        <UserCheck className="w-4 h-4 text-white" /> Authenticate Admin
-                      </button>
-                    </form>
-
-                    <div className="border-t border-white/5 pt-4 text-center">
-                      <button 
-                        onClick={() => { setShowAdminLogin(false); setAdminLoginError(""); setSuccessMessage(""); }}
-                        className="text-xs text-slate-400 hover:text-slate-305 font-semibold bg-transparent border-0 cursor-pointer"
-                      >
-                        Back to Device Registration
-                      </button>
-                    </div>
-                  </>
-                )}</div>
+                )}
+              </div>
             </div>
           </div>
         ) : (
