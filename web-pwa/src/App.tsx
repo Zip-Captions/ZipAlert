@@ -23,7 +23,7 @@ import {
   Wifi,
   Moon
 } from "lucide-react";
-import { auth, db, googleProvider } from "./firebase";
+import { auth, db, googleProvider, isFirebaseConfigured } from "./firebase";
 import { 
   signInWithPopup, 
   signOut, 
@@ -913,6 +913,58 @@ export default function App() {
 
   const activeMember = getActiveMember();
   const currentLicense = getActiveLicense();
+
+  if (!isFirebaseConfigured) {
+    return (
+      <div className="min-h-screen bg-[#07080d] flex items-center justify-center p-6 font-sans select-none">
+        <div className="max-w-xl w-full glass-panel p-8 rounded-3xl border-amber-500/40 text-center space-y-6 animate-fadeIn">
+          <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/20 rounded-2xl mx-auto flex items-center justify-center">
+            <ShieldAlert className="w-8 h-8 text-amber-400 animate-pulse" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-black text-white uppercase tracking-wider">Firebase Configuration Required</h2>
+            <p className="text-sm text-slate-400 leading-relaxed">
+              ZipAlert is running a strictly live production design but could not detect your Firebase Web Client keys. All offline simulations are disabled.
+            </p>
+          </div>
+          <div className="bg-black/30 border border-white/5 rounded-2xl p-5 text-left space-y-3 font-mono text-xs text-slate-300">
+            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Required Environment Variables (.env / Cloudflare Settings):</p>
+            <div className="grid grid-cols-1 gap-2">
+              <div className="flex justify-between border-b border-white/5 pb-1">
+                <span>VITE_FIREBASE_API_KEY</span>
+                <span className="text-red-400 font-bold">MISSING</span>
+              </div>
+              <div className="flex justify-between border-b border-white/5 pb-1">
+                <span>VITE_FIREBASE_PROJECT_ID</span>
+                <span className="text-red-400 font-bold">MISSING</span>
+              </div>
+              <div className="flex justify-between border-b border-white/5 pb-1">
+                <span>VITE_FIREBASE_AUTH_DOMAIN</span>
+                <span className="text-red-400 font-bold">MISSING</span>
+              </div>
+              <div className="flex justify-between border-b border-white/5 pb-1">
+                <span>VITE_FIREBASE_STORAGE_BUCKET</span>
+                <span className="text-red-400 font-bold">MISSING</span>
+              </div>
+              <div className="flex justify-between border-b border-white/5 pb-1">
+                <span>VITE_FIREBASE_MESSAGING_SENDER_ID</span>
+                <span className="text-red-400 font-bold">MISSING</span>
+              </div>
+              <div className="flex justify-between">
+                <span>VITE_FIREBASE_APP_ID</span>
+                <span className="text-red-400 font-bold">MISSING</span>
+              </div>
+            </div>
+          </div>
+          <div className="text-xs text-slate-400 leading-normal text-left font-sans bg-amber-500/5 border border-amber-500/10 rounded-2xl p-4.5 space-y-1.5">
+            <strong className="text-amber-400 block font-bold">IT Admin Action Needed:</strong>
+            <p>1. Local Development: Create a <code>.env</code> file in your local <code>web-pwa/</code> directory containing these keys.</p>
+            <p>2. Live Production: Configure these 6 variables in your <strong>Cloudflare Pages Dashboard</strong> under project build settings, and trigger a fresh redeploy.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden bg-[#07080d] selection:bg-cyan-500 selection:text-black">
