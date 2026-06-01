@@ -219,6 +219,7 @@ export default function App() {
 
   // --- STRICTLY LIVE: Google Sign-In Action ---
   const handleGoogleSignInAction = async () => {
+    if (!isFirebaseConfigured || !auth) return;
     setEnrollmentError("");
     try {
       await signInWithPopup(auth, googleProvider);
@@ -231,6 +232,7 @@ export default function App() {
 
   // --- PROD FIRESTORE: snapshot connection manager ---
   const establishSnapshotListener = () => {
+    if (!isFirebaseConfigured || !db) return;
     if (unsubscribeRef.current) unsubscribeRef.current();
 
     setConnectionState("CONNECTED");
@@ -325,6 +327,10 @@ export default function App() {
 
   // --- STRICTLY LIVE: Firebase Auth Observer & Session Hydration ---
   useEffect(() => {
+    if (!isFirebaseConfigured || !auth) {
+      console.warn("[PWA Client] Firebase Auth not configured. Skipping Auth observer.");
+      return () => {};
+    }
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       setCurrentUser(firebaseUser);
       if (firebaseUser) {
@@ -407,6 +413,7 @@ export default function App() {
 
   // --- PROD DATA SYNC: Hydrate dynamic lists from live Firestore ---
   useEffect(() => {
+    if (!isFirebaseConfigured || !db) return;
     if (isEnrolled && (activeRole === "ADMIN" || activeRole === "SUPER_ADMIN")) {
       // 1. Load active roster
       const rosterQuery = collection(db, "schools", school.id, "members");
@@ -485,6 +492,7 @@ export default function App() {
 
   // Listen to mouse, key, and touch events to maintain connection
   useEffect(() => {
+    if (!isFirebaseConfigured) return;
     establishSnapshotListener();
     resetIdleTimer();
 
@@ -603,6 +611,11 @@ export default function App() {
     e.preventDefault();
     setEnrollmentError("");
 
+    if (!isFirebaseConfigured || !db) {
+      setEnrollmentError("Firebase is not configured.");
+      return;
+    }
+
     if (!currentUser) {
       setEnrollmentError("Please sign in with Google first.");
       return;
@@ -693,6 +706,7 @@ export default function App() {
 
   // Live Admin trigger handlers
   const triggerAlert = async (status: AlertState["status"], message: string) => {
+    if (!isFirebaseConfigured || !db) return;
     const alertDocRef = doc(db, "schools", school.id, "system_status", "current_alert");
     try {
       await setDoc(alertDocRef, {
@@ -710,6 +724,7 @@ export default function App() {
   };
 
   const resetAlert = async () => {
+    if (!isFirebaseConfigured || !db) return;
     const alertDocRef = doc(db, "schools", school.id, "system_status", "current_alert");
     try {
       await setDoc(alertDocRef, {
@@ -778,6 +793,7 @@ export default function App() {
   };
 
   const removeMember = async (id: string) => {
+    if (!isFirebaseConfigured || !db) return;
     try {
       await deleteDoc(doc(db, "schools", school.id, "members", id));
       setMembers(members.filter(m => m.id !== id));
@@ -790,6 +806,7 @@ export default function App() {
   // Live Invitation creation
   const handleCreateInvitation = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isFirebaseConfigured || !db) return;
     const chars = "ABCDEFGHJKLMNOPQRSTUVWXYZ0123456789";
     let token = "";
     for (let i = 0; i < 6; i++) {
@@ -817,6 +834,7 @@ export default function App() {
   // Super Admin - Create District
   const handleCreateDistrict = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isFirebaseConfigured || !db) return;
     if (!newDistrictName || !newDistrictState) return;
 
     const newId = newDistrictName.toLowerCase().replace(/ /g, "_") + "_" + Math.floor(100 + Math.random() * 900);
@@ -842,6 +860,7 @@ export default function App() {
   // Super Admin - Allocate License
   const handleAllocateLicense = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isFirebaseConfigured || !db) return;
     
     const newLicId = `LIC-${Math.floor(10000 + Math.random() * 90000)}`;
     const newLic: License = {
@@ -866,6 +885,7 @@ export default function App() {
 
   // Toggles the status of a specific district license (to test lockouts)
   const toggleLicenseStatus = async (id: string) => {
+    if (!isFirebaseConfigured || !db) return;
     const lic = licenses.find(x => x.id === id);
     if (!lic) return;
     const nextStatus = lic.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
@@ -881,6 +901,7 @@ export default function App() {
   // School settings updates
   const handleUpdateSchoolSettings = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isFirebaseConfigured || !db) return;
     try {
       await setDoc(doc(db, "schools", school.id), {
         settings: school.settings
@@ -895,7 +916,9 @@ export default function App() {
   // Sign out / Disconnect device node cleanly
   const handleSignOut = async () => {
     try {
-      await signOut(auth);
+      if (isFirebaseConfigured && auth) {
+        await signOut(auth);
+      }
       localStorage.removeItem("zip_alert_enrolled");
       localStorage.removeItem("zip_alert_role");
       localStorage.removeItem("zip_alert_member_id");
